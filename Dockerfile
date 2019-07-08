@@ -5,11 +5,12 @@ RUN useradd -U -d /ardupilot ardupilot && \
     usermod -G users ardupilot
 
 RUN DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install --no-install-recommends -y \
-    lsb-release \
+    lsb-release nano\
     sudo \
     software-properties-common \
     python-software-properties && \
     apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
+RUN pip install future
 
 ENV USER=ardupilot
 ADD . /ardupilot
