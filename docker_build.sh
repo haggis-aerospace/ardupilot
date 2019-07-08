@@ -4,6 +4,9 @@ commit=$(git rev-parse --short HEAD)
 date=$(date +%F)
 
 echo "Starting Build Process"
+git clone https://github.com/haggis-aerospace/ardupilot ardupilot_docker
+cd ardupilot_docker
+git submodule update --init --recursive
 
 make $board
 
