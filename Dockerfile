@@ -1,5 +1,6 @@
 FROM ubuntu:16.04
 WORKDIR /ardupilot
+RUN mkdir /keys
 
 RUN useradd -U -d /ardupilot ardupilot && \
     usermod -G users ardupilot
