@@ -20,7 +20,7 @@ make $board
 
 mkdir -p Release/$board/$date/$commit
 echo "Build Complete"
-cp build/$board/bin Release/$board/$date/$commit
+cp build/$board/bin/* Release/$board/$date/$commit/
 echo "Cleaning"
 make clean
 git add -A
