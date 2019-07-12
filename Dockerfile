@@ -22,3 +22,5 @@ RUN chown -R ardupilot:ardupilot /ardupilot && \
 USER ardupilot
 ENV CCACHE_MAXSIZE=1G
 ENV PATH /usr/lib/ccache:/ardupilot/Tools:${PATH}
+RUN git config --global user.email haggisaerospace@dundee.ac.uk
+RUN git config --global user.name HaggisAerospaceService
