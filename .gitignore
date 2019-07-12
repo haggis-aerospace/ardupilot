@@ -13,7 +13,6 @@
 /Tools/autotest/jsbsim_start_0.xml
 /Tools/autotest/rover-ch7_mission.txt
 /tmp/*
-*.bin
 *.d
 *.dfu
 *.dll
@@ -97,7 +96,6 @@ GPATH
 GRTAGS
 GTAGS
 config.mk
-*.apj
 .gdbinit
 /.vscode
 Parameters.html

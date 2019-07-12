@@ -1,5 +1,6 @@
 FROM ubuntu:16.04
 WORKDIR /ardupilot
+RUN mkdir /keys
 
 RUN useradd -U -d /ardupilot ardupilot && \
     usermod -G users ardupilot
@@ -10,7 +11,7 @@ RUN DEBIAN_FRONTEND=noninteractive apt-get update && apt-get install --no-instal
     software-properties-common \
     python-software-properties && \
     apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
-RUN pip install future
+
 
 ENV USER=ardupilot
 ADD . /ardupilot
@@ -21,3 +22,5 @@ RUN chown -R ardupilot:ardupilot /ardupilot && \
 USER ardupilot
 ENV CCACHE_MAXSIZE=1G
 ENV PATH /usr/lib/ccache:/ardupilot/Tools:${PATH}
+RUN git config --global user.email haggisaerospace@dundee.ac.uk
+RUN git config --global user.name HaggisAerospaceService
