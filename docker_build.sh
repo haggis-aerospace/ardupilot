@@ -6,6 +6,11 @@ date=$(date +%F)
 pip install future
 eval $(ssh-agent)
 ssh-add /keys/id_rsa
+mkdir ~/.ssh
+ssh-keyscan github.com >> ~/.ssh/githubKey
+ssh-keygen -lf ~/.ssh/githubKey
+cat /ardupilot/.ssh/githubKey >> ~/.ssh/known_hosts
+
 echo "Starting Build Process"
 #git clone https://github.com/haggis-aerospace/ardupilot ardupilot_docker
 #cd ardupilot_docker
