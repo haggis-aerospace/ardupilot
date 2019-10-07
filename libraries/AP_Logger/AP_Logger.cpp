@@ -15,11 +15,19 @@ AP_Logger *AP_Logger::_singleton;
 extern const AP_HAL::HAL& hal;
 
 #ifndef HAL_LOGGING_FILE_BUFSIZE
+#if HAL_MEM_CLASS >= HAL_MEM_CLASS_300
+#define HAL_LOGGING_FILE_BUFSIZE  50
+#else
 #define HAL_LOGGING_FILE_BUFSIZE  16
-#endif 
+#endif
+#endif
 
 #ifndef HAL_LOGGING_MAV_BUFSIZE
 #define HAL_LOGGING_MAV_BUFSIZE  8
+#endif 
+
+#ifndef HAL_LOGGING_FILE_TIMEOUT
+#define HAL_LOGGING_FILE_TIMEOUT 5
 #endif 
 
 // by default log for 15 seconds after disarming
@@ -78,6 +86,13 @@ const AP_Param::GroupInfo AP_Logger::var_info[] = {
     // @Units: kB
     AP_GROUPINFO("_MAV_BUFSIZE",  5, AP_Logger, _params.mav_bufsize,       HAL_LOGGING_MAV_BUFSIZE),
 
+    // @Param: _FILE_TIMEOUT
+    // @DisplayName: Timeout before giving up on file writes
+    // @Description: This controls the amount of time before failing writes to a log file cause the file to be closed and logging stopped.
+    // @User: Standard
+    // @Units: s
+    AP_GROUPINFO("_FILE_TIMEOUT",  6, AP_Logger, _params.file_timeout,     HAL_LOGGING_FILE_TIMEOUT),
+    
     AP_GROUPEND
 };
 
@@ -112,8 +127,7 @@ void AP_Logger::Init(const struct LogStructure *structures, uint8_t num_types)
     _num_types = num_types;
     _structures = structures;
 
-#if defined(HAL_BOARD_LOG_DIRECTORY)
- #if HAL_OS_POSIX_IO || HAL_OS_FATFS_IO
+#if defined(HAL_BOARD_LOG_DIRECTORY) && HAVE_FILESYSTEM_SUPPORT
     if (_params.backend_types & uint8_t(Backend_Type::FILESYSTEM)) {
         LoggerMessageWriter_DFLogStart *message_writer =
             new LoggerMessageWriter_DFLogStart();
@@ -128,8 +142,7 @@ void AP_Logger::Init(const struct LogStructure *structures, uint8_t num_types)
             _next_backend++;
         }
     }
- #endif
-#endif // HAL_BOARD_LOG_DIRECTORY
+#endif // HAVE_FILESYSTEM_SUPPORT
 
 #if LOGGER_MAVLINK_SUPPORT
     if (_params.backend_types & uint8_t(Backend_Type::MAVLINK)) {
@@ -206,7 +219,7 @@ void AP_Logger::Init(const struct LogStructure *structures, uint8_t num_types)
 #define DEBUG_LOG_STRUCTURES 0
 
 extern const AP_HAL::HAL& hal;
-#define Debug(fmt, args ...)  do {hal.console->printf("%s:%d: " fmt "\n", __FUNCTION__, __LINE__, ## args); hal.scheduler->delay(1); } while(0)
+#define Debug(fmt, args ...)  do {::fprintf(stderr, "%s:%d: " fmt "\n", __FUNCTION__, __LINE__, ## args); } while(0)
 
 /// return the number of commas present in string
 static uint8_t count_commas(const char *string)
@@ -651,9 +664,9 @@ bool AP_Logger::logging_started(void) {
     return false;
 }
 
-void AP_Logger::handle_mavlink_msg(GCS_MAVLINK &link, mavlink_message_t* msg)
+void AP_Logger::handle_mavlink_msg(GCS_MAVLINK &link, const mavlink_message_t &msg)
 {
-    switch (msg->msgid) {
+    switch (msg.msgid) {
     case MAVLINK_MSG_ID_REMOTE_LOG_BLOCK_STATUS:
         FOR_EACH_BACKEND(remote_log_block_status_msg(link.get_chan(), msg));
         break;
@@ -1075,7 +1088,7 @@ bool AP_Logger::Write_ISBH(const uint16_t seqno,
     if (_next_backend == 0) {
         return false;
     }
-    struct log_ISBH pkt = {
+    const struct log_ISBH pkt{
         LOG_PACKET_HEADER_INIT(LOG_ISBH_MSG),
         time_us        : AP_HAL::micros64(),
         seqno          : seqno,
@@ -1127,7 +1140,7 @@ bool AP_Logger::Write_ISBD(const uint16_t isb_seqno,
 // Wrote an event packet
 void AP_Logger::Write_Event(Log_Event id)
 {
-    struct log_Event pkt = {
+    const struct log_Event pkt{
         LOG_PACKET_HEADER_INIT(LOG_EVENT_MSG),
         time_us  : AP_HAL::micros64(),
         id       : id
@@ -1139,7 +1152,7 @@ void AP_Logger::Write_Event(Log_Event id)
 void AP_Logger::Write_Error(LogErrorSubsystem sub_system,
                             LogErrorCode error_code)
 {
-  struct log_Error pkt = {
+  const struct log_Error pkt{
       LOG_PACKET_HEADER_INIT(LOG_ERROR_MSG),
       time_us       : AP_HAL::micros64(),
       sub_system    : uint8_t(sub_system),

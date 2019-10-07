@@ -127,6 +127,9 @@ const AP_Scheduler::Task Copter::scheduler_tasks[] = {
     SCHED_TASK(three_hz_loop,          3,     75),
     SCHED_TASK_CLASS(AP_ServoRelayEvents,  &copter.ServoRelayEvents,      update_events, 50,     75),
     SCHED_TASK_CLASS(AP_Baro,              &copter.barometer,           accumulate,      50,  90),
+#if AC_FENCE == ENABLED
+    SCHED_TASK_CLASS(AC_Fence,             &copter.fence,               update,          10, 100),
+#endif
 #if PRECISION_LANDING == ENABLED
     SCHED_TASK(update_precland,      400,     50),
 #endif
@@ -448,15 +451,6 @@ void Copter::one_hz_loop()
 #endif
 
     AP_Notify::flags.flying = !ap.land_complete;
-
-    // update error mask of sensors and subsystems. The mask uses the
-    // MAV_SYS_STATUS_* values from mavlink. If a bit is set then it
-    // indicates that the sensor or subsystem is present but not
-    // functioning correctly
-    gcs().update_sensor_status_flags();
-
-    // init compass location for declination
-    init_compass_location();
 }
 
 // called at 50hz
@@ -596,7 +590,7 @@ void Copter::publish_osd_info()
 Copter::Copter(void)
     : logger(g.log_bitmask),
     flight_modes(&g.flight_mode1),
-    control_mode(STABILIZE),
+    control_mode(Mode::Number::STABILIZE),
     simple_cos_yaw(1.0f),
     super_simple_cos_yaw(1.0),
     land_accel_ef_filter(LAND_DETECTOR_ACCEL_LPF_CUTOFF),

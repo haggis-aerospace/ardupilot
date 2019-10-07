@@ -56,6 +56,13 @@ void ModeAcro::run()
                                        copter.g.throttle_filt);
 }
 
+float ModeAcro::throttle_hover() const
+{
+    if (g2.acro_thr_mid > 0) {
+        return g2.acro_thr_mid;
+    }
+    return Mode::throttle_hover();
+}
 
 // get_pilot_desired_angle_rates - transform pilot's roll pitch and yaw input into a desired lean angle rates
 // returns desired angle rates in centi-degrees-per-second
@@ -124,15 +131,15 @@ void ModeAcro::get_pilot_desired_angle_rates(int16_t roll_in, int16_t pitch_in, 
         if (g.acro_trainer == ACRO_TRAINER_LIMITED) {
             const float angle_max = copter.aparm.angle_max;
             if (roll_angle > angle_max){
-                rate_ef_level.x -=  g.acro_balance_roll*(roll_angle-angle_max);
+                rate_ef_level.x +=  AC_AttitudeControl::sqrt_controller(angle_max - roll_angle, g.acro_rp_p * 4.5, attitude_control->get_accel_roll_max(), G_Dt);
             }else if (roll_angle < -angle_max) {
-                rate_ef_level.x -=  g.acro_balance_roll*(roll_angle+angle_max);
+                rate_ef_level.x +=  AC_AttitudeControl::sqrt_controller(-angle_max - roll_angle, g.acro_rp_p * 4.5, attitude_control->get_accel_roll_max(), G_Dt);
             }
 
             if (pitch_angle > angle_max){
-                rate_ef_level.y -=  g.acro_balance_pitch*(pitch_angle-angle_max);
+                rate_ef_level.y +=  AC_AttitudeControl::sqrt_controller(angle_max - pitch_angle, g.acro_rp_p * 4.5, attitude_control->get_accel_pitch_max(), G_Dt);
             }else if (pitch_angle < -angle_max) {
-                rate_ef_level.y -=  g.acro_balance_pitch*(pitch_angle+angle_max);
+                rate_ef_level.y +=  AC_AttitudeControl::sqrt_controller(-angle_max - pitch_angle, g.acro_rp_p * 4.5, attitude_control->get_accel_pitch_max(), G_Dt);
             }
         }
 

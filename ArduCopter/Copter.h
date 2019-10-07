@@ -83,6 +83,18 @@
 #include "defines.h"
 #include "config.h"
 
+#if FRAME_CONFIG == HELI_FRAME
+    #define AC_AttitudeControl_t AC_AttitudeControl_Heli
+#else
+    #define AC_AttitudeControl_t AC_AttitudeControl_Multi
+#endif
+
+#if FRAME_CONFIG == HELI_FRAME
+ #define MOTOR_CLASS AP_MotorsHeli
+#else
+ #define MOTOR_CLASS AP_MotorsMulticopter
+#endif
+
 #include "RC_Channel.h"         // RC Channel Library
 
 #include "GCS_Mavlink.h"
@@ -96,6 +108,10 @@
 #endif
 #if AC_AVOID_ENABLED == ENABLED
  #include <AC_Avoidance/AC_Avoid.h>
+#endif
+#if AC_OAPATHPLANNER_ENABLED == ENABLED
+ #include <AC_WPNav/AC_WPNav_OA.h>
+ #include <AC_Avoidance/AP_OAPathPlanner.h>
 #endif
 #if SPRAYER_ENABLED == ENABLED
  # include <AC_Sprayer/AC_Sprayer.h>
@@ -174,18 +190,6 @@
 
 #if CONFIG_HAL_BOARD == HAL_BOARD_SITL
 #include <SITL/SITL.h>
-#endif
-
-#if FRAME_CONFIG == HELI_FRAME
-    #define AC_AttitudeControl_t AC_AttitudeControl_Heli
-#else
-    #define AC_AttitudeControl_t AC_AttitudeControl_Multi
-#endif
-
-#if FRAME_CONFIG == HELI_FRAME
- #define MOTOR_CLASS AP_MotorsHeli
-#else
- #define MOTOR_CLASS AP_MotorsMulticopter
 #endif
 
 #include "mode.h"
@@ -277,20 +281,47 @@ private:
     Compass compass;
     AP_InertialSensor ins;
 
-    RangeFinder rangefinder{serial_manager};
-    struct {
+    RangeFinder rangefinder;
+    struct RangeFinderState {
         bool enabled:1;
         bool alt_healthy:1; // true if we can trust the altitude from the rangefinder
         int16_t alt_cm;     // tilt compensated altitude (in cm) from rangefinder
         uint32_t last_healthy_ms;
         LowPassFilterFloat alt_cm_filt; // altitude filter
-        int8_t glitch_count;
-    } rangefinder_state;
+        int16_t alt_cm_glitch_protected;    // last glitch protected altitude
+        int8_t glitch_count;    // non-zero number indicates rangefinder is glitching
+        uint32_t glitch_cleared_ms; // system time glitch cleared
+    } rangefinder_state, rangefinder_up_state;
 
-    struct {
-        float target_alt_cm;        // desired altitude in cm above the ground
+    class SurfaceTracking {
+    public:
+        // get desired climb rate (in cm/s) to achieve surface tracking
+        float adjust_climb_rate(float target_rate);
+
+        // get/set target altitude (in cm) above ground
+        bool get_target_alt_cm(float &target_alt_cm) const;
+        void set_target_alt_cm(float target_alt_cm);
+
+        // get target and actual distances (in m) for logging purposes
+        bool get_dist_for_logging(float &target_dist, float &actual_dist) const;
+        void invalidate_for_logging() { valid_for_logging = false; }
+
+        // surface tracking states
+        enum class SurfaceTrackingState {
+            SURFACE_TRACKING_DISABLED = 0,
+            SURFACE_TRACKING_GROUND = 1,
+            SURFACE_TRACKING_CEILING = 2
+        };
+        // set direction
+        void set_state(SurfaceTrackingState state);
+
+    private:
+        SurfaceTrackingState tracking_state = SurfaceTrackingState::SURFACE_TRACKING_GROUND;
+        float target_dist_cm;       // desired distance in cm from ground or ceiling
         uint32_t last_update_ms;    // system time of last update to target_alt_cm
+        uint32_t last_glitch_cleared_ms;    // system time of last handle glitch recovery
         bool valid_for_logging;     // true if target_alt_cm is valid for logging
+        bool reset_target;          // true if target should be reset because of change in tracking_state
     } surface_tracking;
 
 #if RPM_ENABLED == ENABLED
@@ -368,10 +399,10 @@ private:
 
     // This is the state of the flight control system
     // There are multiple states defined such as STABILIZE, ACRO,
-    control_mode_t control_mode;
+    Mode::Number control_mode;
     mode_reason_t control_mode_reason = MODE_REASON_UNKNOWN;
 
-    control_mode_t prev_control_mode;
+    Mode::Number prev_control_mode;
     mode_reason_t prev_control_mode_reason = MODE_REASON_UNKNOWN;
 
     RCMapper rcmap;
@@ -482,11 +513,11 @@ private:
     AP_Relay relay;
 
     // handle repeated servo and relay events
-    AP_ServoRelayEvents ServoRelayEvents{relay};
+    AP_ServoRelayEvents ServoRelayEvents;
 
     // Camera
 #if CAMERA == ENABLED
-    AP_Camera camera{&relay, MASK_LOG_CAMERA, current_loc, ahrs};
+    AP_Camera camera{MASK_LOG_CAMERA, current_loc};
 #endif
 
     // Camera/Antenna mount tracking and stabilisation stuff
@@ -545,7 +576,7 @@ private:
     AP_ADSB adsb;
 
     // avoidance of adsb enabled vehicles (normally manned vehicles)
-    AP_Avoidance_Copter avoidance_adsb{ahrs, adsb};
+    AP_Avoidance_Copter avoidance_adsb{adsb};
 #endif
 
     // last valid RC input time
@@ -646,9 +677,6 @@ private:
     void set_throttle_takeoff();
     float get_pilot_desired_climb_rate(float throttle_control);
     float get_non_takeoff_throttle();
-    float get_surface_tracking_climb_rate(int16_t target_rate);
-    bool get_surface_tracking_target_alt_cm(float &target_alt_cm) const;
-    void set_surface_tracking_target_alt_cm(float target_alt_cm);
     float get_avoidance_adjusted_climbrate(float target_rate);
     void set_accel_throttle_I_from_pilot_throttle();
     void rotate_body_frame_to_NE(float &x, float &y);
@@ -670,7 +698,7 @@ private:
     bool far_from_EKF_origin(const Location& loc);
 
     // compassmot.cpp
-    MAV_RESULT mavlink_compassmot(mavlink_channel_t chan);
+    MAV_RESULT mavlink_compassmot(const GCS_MAVLINK &gcs_chan);
 
     // crash_check.cpp
     void crash_check();
@@ -761,7 +789,7 @@ private:
     void log_init(void);
 
     // mode.cpp
-    bool set_mode(control_mode_t mode, mode_reason_t reason);
+    bool set_mode(Mode::Number mode, mode_reason_t reason);
     void update_flight_mode();
     void notify_flight_mode();
 
@@ -771,8 +799,8 @@ private:
 
     // motor_test.cpp
     void motor_test_output();
-    bool mavlink_motor_test_check(mavlink_channel_t chan, bool check_rc);
-    MAV_RESULT mavlink_motor_test_start(mavlink_channel_t chan, uint8_t motor_seq, uint8_t throttle_type, uint16_t throttle_value, float timeout_sec, uint8_t motor_count);
+    bool mavlink_motor_test_check(const GCS_MAVLINK &gcs_chan, bool check_rc);
+    MAV_RESULT mavlink_motor_test_start(const GCS_MAVLINK &gcs_chan, uint8_t motor_seq, uint8_t throttle_type, uint16_t throttle_value, float timeout_sec, uint8_t motor_count);
     void motor_test_stop();
 
     // motors.cpp
@@ -812,8 +840,8 @@ private:
     void init_rangefinder(void);
     void read_rangefinder(void);
     bool rangefinder_alt_ok();
+    bool rangefinder_up_ok();
     void rpm_update();
-    void init_compass_location();
     void init_optflow();
     void update_optical_flow(void);
     void compass_cal_update(void);
@@ -839,12 +867,11 @@ private:
     // system.cpp
     void init_ardupilot();
     void startup_INS_ground();
-    bool position_ok();
-    bool ekf_position_ok();
-    bool optflow_position_ok();
+    bool position_ok() const;
+    bool ekf_position_ok() const;
+    bool optflow_position_ok() const;
     void update_auto_armed();
     bool should_log(uint32_t mask);
-    void set_default_frame_class();
     MAV_TYPE get_frame_mav_type();
     const char* get_frame_string();
     void allocate_motors(void);
@@ -945,7 +972,7 @@ private:
 #endif
 
     // mode.cpp
-    Mode *mode_from_mode_num(const uint8_t mode);
+    Mode *mode_from_mode_num(const Mode::Number mode);
     void exit_mode(Mode *&old_flightmode, Mode *&new_flightmode);
 
 public:

@@ -186,9 +186,6 @@ protected:
     //  reversed should be true if the vehicle is intentionally backing up which allows the pilot to increase the backing up speed by pulling the throttle stick down
     float calc_speed_nudge(float target_speed, bool reversed);
 
-    // calculate vehicle stopping location using current location, velocity and maximum acceleration
-    void calc_stopping_location(Location& stopping_loc);
-
 protected:
 
     // decode pilot steering and throttle inputs and return in steer_out and throttle_out arguments
@@ -283,7 +280,8 @@ protected:
         Auto_HeadingAndSpeed,   // turn to a given heading
         Auto_RTL,               // perform RTL within auto mode
         Auto_Loiter,            // perform Loiter within auto mode
-        Auto_Guided             // handover control to external navigation system from within auto mode
+        Auto_Guided,            // handover control to external navigation system from within auto mode
+        Auto_Stop               // stop the vehicle as quickly as possible
     } _submode;
 
 private:
@@ -291,6 +289,7 @@ private:
     bool check_trigger(void);
     bool start_loiter();
     void start_guided(const Location& target_loc);
+    void start_stop();
     void send_guided_position_target();
 
     bool start_command(const AP_Mission::Mission_Command& cmd);
@@ -302,6 +301,8 @@ private:
     bool do_nav_wp(const AP_Mission::Mission_Command& cmd, bool always_stop_at_destination);
     void do_nav_guided_enable(const AP_Mission::Mission_Command& cmd);
     void do_nav_set_yaw_speed(const AP_Mission::Mission_Command& cmd);
+    void do_nav_delay(const AP_Mission::Mission_Command& cmd);
+    bool verify_nav_delay(const AP_Mission::Mission_Command& cmd);
     bool verify_nav_wp(const AP_Mission::Mission_Command& cmd);
     bool verify_RTL();
     bool verify_loiter_unlimited(const AP_Mission::Mission_Command& cmd);
@@ -345,6 +346,10 @@ private:
     // A starting value used to check the status of a conditional command.
     // For example in a delay command the condition_start records that start time for the delay
     int32_t condition_start;
+
+    // Delay the next navigation command
+    uint32_t nav_delay_time_max_ms;  // used for delaying the navigation commands
+    uint32_t nav_delay_time_start_ms;
 
 };
 
@@ -518,6 +523,8 @@ protected:
     bool _enter() override;
 
     bool sent_notification; // used to send one time notification to ground station
+    bool _loitering;        // true if loitering at end of RTL
+
 };
 
 class ModeSmartRTL : public Mode
@@ -555,8 +562,10 @@ protected:
 
     bool _enter() override;
     bool _load_point;
+    bool _loitering;        // true if loitering at end of SRTL
 };
 
+   
 
 class ModeSteering : public Mode
 {
@@ -625,6 +634,7 @@ public:
 protected:
 
     bool _enter() override;
+    void _exit() override;
 };
 
 class ModeSimple : public Mode

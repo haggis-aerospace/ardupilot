@@ -261,7 +261,12 @@ public:
 
     // see if EKF lane switching is possible to avoid EKF failsafe
     void check_lane_switch(void) override;
-    
+
+    void Log_Write();
+
+    // check whether compass can be bypassed for arming check in case when external navigation data is available 
+    bool is_ext_nav_used_for_yaw(void) const;
+
 private:
     enum EKF_TYPE {EKF_TYPE_NONE=0,
                    EKF_TYPE3=3,

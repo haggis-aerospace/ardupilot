@@ -44,7 +44,12 @@ class Board:
         self.configure_env(cfg, env)
 
         # Setup scripting, had to defer this to allow checking board size
-        if (not cfg.options.disable_scripting) and ((cfg.env.BOARD_FLASH_SIZE is None) or (cfg.env.BOARD_FLASH_SIZE == []) or (cfg.env.BOARD_FLASH_SIZE > 1024)):
+        if ((not cfg.options.disable_scripting) and
+            (not cfg.env.DISABLE_SCRIPTING) and
+            ((cfg.env.BOARD_FLASH_SIZE is None) or
+             (cfg.env.BOARD_FLASH_SIZE == []) or
+             (cfg.env.BOARD_FLASH_SIZE > 1024))):
+
             env.DEFINES.update(
                 ENABLE_SCRIPTING = 1,
                 ENABLE_HEAP = 1,
@@ -113,11 +118,14 @@ class Board:
             '-Werror=shadow',
             '-Werror=return-type',
             '-Werror=unused-result',
+            '-Werror=unused-variable',
             '-Werror=narrowing',
             '-Werror=attributes',
             '-Werror=overflow',
             '-Werror=parentheses',
             '-Werror=format-extra-args',
+            '-Werror=delete-non-virtual-dtor',
+            '-Werror=ignored-qualifiers',
         ]
 
         if cfg.options.scripting_checks:
@@ -167,8 +175,10 @@ class Board:
             '-Wno-reorder',
             '-Wno-redundant-decls',
             '-Wno-unknown-pragmas',
+            '-Wno-expansion-to-defined',
             '-Werror=attributes',
             '-Werror=format-security',
+            '-Werror=format-extra-args',
             '-Werror=enum-compare',
             '-Werror=array-bounds',
             '-Werror=uninitialized',
@@ -217,6 +227,11 @@ class Board:
             env.CXXFLAGS += [
                 '-Werror=unused-but-set-variable'
             ]
+            (major, minor, patchlevel) = cfg.env.CC_VERSION
+            if int(major) > 5 or (int(major) == 5 and int(minor) > 1):
+                env.CXXFLAGS += [
+                    '-Werror=suggest-override',
+                ]
 
         if cfg.env.DEBUG:
             env.CXXFLAGS += [
@@ -253,7 +268,7 @@ class Board:
                 cfg.srcnode.find_dir('modules/uavcan/libuavcan/include').abspath()
             ]
 
-        if cfg.env.build_dates:
+        if cfg.options.build_dates:
             env.build_dates = True
 
         # We always want to use PRI format macros
@@ -277,14 +292,6 @@ class Board:
     def embed_ROMFS_files(self, ctx):
         '''embed some files using AP_ROMFS'''
         import embed
-        if ctx.env.USE_NUTTX_IOFW:
-            # use fmuv2_IO_NuttX.bin instead of fmuv2_IO.bin
-            for i in range(len(ctx.env.ROMFS_FILES)):
-                (name,filename) = ctx.env.ROMFS_FILES[i]
-                if name == 'io_firmware.bin':
-                    filename = 'Tools/IO_Firmware/fmuv2_IO_NuttX.bin'
-                    print("Using IO firmware %s" % filename)
-                    ctx.env.ROMFS_FILES[i] = (name,filename);
         header = ctx.bldnode.make_node('ap_romfs_embedded.h').abspath()
         if not embed.create_embedded_h(header, ctx.env.ROMFS_FILES):
             ctx.fatal("Failed to created ap_romfs_embedded.h")
@@ -362,6 +369,7 @@ class sitl(Board):
         ]
 
         cfg.check_librt(env)
+        cfg.check_feenableexcept()
 
         env.LINKFLAGS += ['-pthread',]
         env.AP_LIBRARIES += [
@@ -417,7 +425,6 @@ class chibios(Board):
 
         env.DEFINES.update(
             CONFIG_HAL_BOARD = 'HAL_BOARD_CHIBIOS',
-            HAVE_OCLOEXEC = 0,
             HAVE_STD_NULLPTR_T = 0,
         )
 
@@ -474,6 +481,9 @@ class chibios(Board):
         env.CXXFLAGS += env.CFLAGS + [
             '-fno-rtti',
             '-fno-threadsafe-statics',
+        ]
+        env.CFLAGS += [
+            '-std=c11'
         ]
 
         if Utils.unversioned_sys_platform() == 'cygwin':

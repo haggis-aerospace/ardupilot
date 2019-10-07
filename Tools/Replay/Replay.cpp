@@ -331,8 +331,8 @@ void Replay::_parse_command_line(uint8_t argc, char * const argv[])
 class IMUCounter : public AP_LoggerFileReader {
 public:
     IMUCounter() {}
-    bool handle_log_format_msg(const struct log_Format &f);
-    bool handle_msg(const struct log_Format &f, uint8_t *msg);
+    bool handle_log_format_msg(const struct log_Format &f) override;
+    bool handle_msg(const struct log_Format &f, uint8_t *msg) override;
 
     uint64_t last_clock_timestamp = 0;
     float last_parm_value = 0;
@@ -616,7 +616,7 @@ void Replay::set_signal_handlers(void)
 void Replay::write_ekf_logs(void)
 {
     if (!LogReader::in_list("EKF", nottypes)) {
-        _vehicle.logger.Write_EKF(_vehicle.ahrs);
+        _vehicle.ahrs.Log_Write();
     }
     if (!LogReader::in_list("AHRS2", nottypes)) {
         _vehicle.logger.Write_AHRS2(_vehicle.ahrs);
@@ -644,7 +644,6 @@ void Replay::read_sensors(const char *type)
             if (!_vehicle.ahrs.set_home(loc)) {
                 ::printf("Failed to set home to that location!");
             }
-            _vehicle.compass.set_initial_location(loc.lat, loc.lng);
             done_home_init = true;
         }
     }
@@ -958,7 +957,7 @@ bool Replay::check_user_param(const char *name)
     return false;
 }
 
-const struct AP_Param::GroupInfo        GCS_MAVLINK::var_info[] = {
+const struct AP_Param::GroupInfo        GCS_MAVLINK_Parameters::var_info[] = {
     AP_GROUPEND
 };
 GCS_Dummy _gcs;
@@ -969,6 +968,7 @@ void AP_Camera::send_feedback(mavlink_channel_t) {}
 void AP_Camera::control(float, float, float, float, float, float) {}
 void AP_Camera::configure(float, float, float, float, float, float, float) {}
 bool AP_AdvancedFailsafe::gcs_terminate(bool should_terminate, const char *reason) { return false; }
+AP_AdvancedFailsafe *AP::advancedfailsafe() { return nullptr; }
 
 // avoid building/linking Devo:
 void AP_DEVO_Telem::init() {};
